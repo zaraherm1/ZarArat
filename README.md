@@ -1,24 +1,22 @@
-# بات گروهی شوخ‌طبع تلگرام (مثلاً «زارا»)
+# زارا (@Zar133bot) — روی هرمس
 
-## رفتار
-1. اسمشو صدا بزنی (زارا / @username) → فوری «جونم؟» و اگه حرفی زدی جواب هوشمند
-2. کلمات کلیدی (vpn، نتا، فیلترشکن...) → ریپلای خودکار تبلیغ
-3. منشن/ریپلای/اسلش → جواب شوخ Gemini
-4. هر ۲۵ پیام یه نکتہ خودمونی
+گروه‌بات دخترانهٔ زارا با موتور هرمس: ابزار جست‌وجو/وب/اخبار/فایل + پرسونای دختر کامل.
 
-## فایل‌ها (بدون ری‌استارت قابل تغییر)
-- keywords.json —‌ [{"words":[...], "emoji":"🔥", "reply":"تبلیغ"}]
-- name_replies.json — جواب‌های صدا زدن ({} = اسم بات)
+- مدل: deepseek-ai/DeepSeek-V4.1-Flash (ریور مستقیم — بدون ۹روتر)
+- گروه: جواب فقط با منشن/ریپلای؛ pv آزاد
+- ری‌برند کامل: هیچ‌جا هرمس دیده نمی‌شه
+- نسخهٔ سادهٔ قبلی بات: پوشهٔ legacy-bot/ (برای رول‌بک)
 
-## Env (Railway Variables)
-TELEGRAM_TOKEN / GEMINI_API_KEY / BOT_NAME=زارا / BOT_USERNAME=Zar133bot
-GEMINI_MODEL=gemini-2.0-flash / CHATTER_EVERY=25 / SYSTEM_PROMPT (اختیاری)
+## Railway (کانفیگ فعلیِ کار天津آماده)
+- Deploy from GitHub repo → همین ریپو (ریشه)
+- Volume → مسیر **/data**
+- Variables اختیاریه — همه‌چیز تو bot.env هست؛ ولی اگه خواستی secretها رو اونجا overrides کن: TELEGRAM_BOT_TOKEN / OPENAI_BASE_URL / OPENAI_API_KEY
+- پوش = دیپلوی خودکار.
 
-## ست‌آپ BotFather
-/setprivacy → Disable (تا همهٔ پیام‌های گروه رو ببینه)
-
-## v3 — کوئوتا و ادمین
-- ADMIN_IDS = 6326889425 (آدیدی ادمین‌ها با کاما) — ادمین‌ها نامحدود
-- DAILY_LIMIT = 35 — هر یوزر عادی روزانه ۳۵ پیام AI؛ بیشترش → پیام «سهمت تموم شد»
-- کلمات کلیدی هم اکنون شامل نت ضعیف/قطع، chatgpt/جمنای/deepseek و vpn/اکسپرس/کانفیگ می‌شود → ریپلای تبلیغ @diazpshopbot
-- تنظیمات رفتار همه در config.json (personality، react_chance، chatter، typing، تأخیر)
+## فایل‌ها
+- Dockerfile — ایمیج رسمی hermes + stage2-hook (ری‌برند زارا + strip reasoning ریور)
+- hermes-config.yaml — گروه باز، منشن لازم، مدل دیپ‌سیک
+- SOUL.md — پرسونای زارا (seed با نسخه؛ تغییرات بعدی روی والوم /data/.hermes/SOUL.md)
+- scripts/entrypoint.sh — bootstrap + seed + اجرای gateway
+- brand_patch.py — همهٔ رشته‌های «هرمس» → «زارا»
+- bot.env — کلیدها (ریپو پرایوته؛ Railway Variables برنده‌ان اگر ست شن)
