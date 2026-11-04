@@ -23,6 +23,10 @@ platforms:
       observe_unmentioned_group_messages: true
       bots_require_mention: true
 
+plugins:
+  enabled:
+    - zara-keyword-ads
+
 tool_loop_guardrails:
   warnings_enabled: true
   non_interactive_hard_stop_enabled: false

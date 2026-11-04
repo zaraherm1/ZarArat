@@ -57,7 +57,7 @@ EOF
 fi
 
 # --- seed managed config + SOUL (zara-setup) ---
-ZARA_VERSION="${ZARA_VERSION:-1.6}"
+ZARA_VERSION="${ZARA_VERSION:-1.7}"
 STATE_FILE="${HERMES_HOME}/.zara-setup-version"
 seed_managed() {
   local src="$1" dst="$2"
@@ -78,6 +78,17 @@ seed_managed() {
 _SAVED_MODEL="$(awk '/^model:/{m=1} m && /^[[:space:]]+default:[[:space:]]/{print $2; exit}' "$CONFIG_FILE" 2>/dev/null || true)"
 seed_managed /app/hermes-config.yaml "$CONFIG_FILE"
 seed_managed /app/SOUL.md "${HERMES_HOME}/SOUL.md"
+# --- seed user plugins (zara-keyword-ads) — refresh on every boot ---
+mkdir -p "${HERMES_HOME}/plugins"
+if [[ -d /app/plugins ]]; then
+  for _p in /app/plugins/*/; do
+    _name="$(basename "$_p")"
+    rm -rf "${HERMES_HOME}/plugins/${_name}"
+    cp -r "$_p" "${HERMES_HOME}/plugins/${_name}"
+    echo "[bootstrap] seeded plugin ${_name}"
+  done
+  unset _p _name
+fi
 if [[ -n "${_SAVED_MODEL}" ]] && ! grep -qE "^[[:space:]]+default:[[:space:]]*${_SAVED_MODEL}[[:space:]]*$" "$CONFIG_FILE"; then
   sed -i -E "0,/^[[:space:]]+default:[[:space:]].*/s//  default: ${_SAVED_MODEL}/" "$CONFIG_FILE" 2>/dev/null || true
 fi

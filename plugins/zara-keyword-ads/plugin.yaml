@@ -1,0 +1,6 @@
+name: zara-keyword-ads
+version: "1.0.0"
+description: "Keyword-triggered ad nudges for Zara: matches Persian/English wake words (نت ضعیف، vpn، چت‌جی‌پی‌تی...) on incoming messages via pre_gateway_dispatch and appends a nudge so the model weaves a @diazpshopbot ad in its own words. Per-chat 30-min cooldown; admin never nudged."
+author: "Arat, Hermes Agent"
+provides_hooks:
+  - pre_gateway_dispatch
