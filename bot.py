@@ -26,6 +26,8 @@ LLM_KEY = os.environ.get("LLM_API_KEY", "").strip()
 LLM_MODEL = os.environ.get("LLM_MODEL", "GLM-5.3").strip()
 BOT_NAME = os.environ.get("BOT_NAME", "زارا").strip()
 BOT_USERNAME = os.environ.get("BOT_USERNAME", "").strip().lstrip("@")
+ADMIN_IDS = {int(x) for x in os.environ.get("ADMIN_IDS", "").replace(" ", "").split(",") if x.strip().lstrip("-").isdigit()}
+DAILY_LIMIT = int(os.environ.get("DAILY_LIMIT", "35"))
 LLM_URL = LLM_BASE + "/chat/completions"
 DIR = os.path.dirname(os.path.abspath(__file__))
 CFG_FILE = os.path.join(DIR, "config.json")
@@ -69,6 +71,28 @@ _cfg_mtime = 0
 _hist, _hist_lock = {}, threading.Lock()
 _msg_counter = 0
 _counter_lock = threading.Lock()
+_usage = {}  # user_id -> (day, count)
+_usage_lock = threading.Lock()
+
+
+def quota_ok(user_id):
+    """روزانه DAILY_LIMIT پیام به AI برای هر یوزر؛ ادمین‌ها نامحدود."""
+    if user_id in ADMIN_IDS:
+        return True
+    today = time.strftime("%Y%m%d")
+    with _usage_lock:
+        day, n = _usage.get(user_id, (today, 0))
+        if day != today:
+            day, n = today, 0
+        if n >= DAILY_LIMIT:
+            return False
+        _usage[user_id] = (day, n + 1)
+        return True
+
+
+def quota_stop_text():
+    return (f"امروز به سهم‌ات رسیدی ({DAILY_LIMIT} پیام) 😅 فردا بیا، "
+            "یه کاریش نمی‌شه کرد 😎")
 
 
 def log(*a):
@@ -262,6 +286,9 @@ def handle_update(u):
             rest = rest.replace("@" + BOT_USERNAME, "", 1)
         rest = rest.strip(" ،.,!؟?")
         if len(rest) > 3 and LLM_KEY:
+            if not quota_ok(msg["from"]["id"]):
+                reply(chat_id, mid, quota_stop_text())
+                return
             out = llm_reply(chat_id, rest)
             if out:
                 reply(chat_id, mid, out)
@@ -269,6 +296,9 @@ def handle_update(u):
 
     if chat_type == "private":
         if not check_keywords(text, chat_id, mid) and LLM_KEY:
+            if not quota_ok(msg["from"]["id"]):
+                reply(chat_id, mid, quota_stop_text())
+                return
             reply(chat_id, mid, llm_reply(chat_id, text))
         return
 
@@ -279,6 +309,9 @@ def handle_update(u):
 
     # ۳) خطاب مستقیم → AI
     if mentions_bot(text, msg) and LLM_KEY:
+        if not quota_ok(msg["from"]["id"]):
+            reply(chat_id, mid, quota_stop_text())
+            return
         clean = text
         if BOT_USERNAME:
             clean = clean.replace("@" + BOT_USERNAME, "").strip()
@@ -291,7 +324,8 @@ def handle_update(u):
     casual_react(chat_id, mid)
     chance = float(c.get("reply_chance_in_group", 0.0))
     if chance > 0 and LLM_KEY and random.random() < chance:
-        reply(chat_id, mid, llm_reply(chat_id, normalize(text)))
+        if quota_ok(msg["from"]["id"]):
+            reply(chat_id, mid, llm_reply(chat_id, normalize(text)))
         return
     with _counter_lock:
         _msg_counter += 1

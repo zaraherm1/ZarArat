@@ -16,3 +16,9 @@ GEMINI_MODEL=gemini-2.0-flash / CHATTER_EVERY=25 / SYSTEM_PROMPT (اختیاری
 
 ## ست‌آپ BotFather
 /setprivacy → Disable (تا همهٔ پیام‌های گروه رو ببینه)
+
+## v3 — کوئوتا و ادمین
+- ADMIN_IDS = 6326889425 (آدیدی ادمین‌ها با کاما) — ادمین‌ها نامحدود
+- DAILY_LIMIT = 35 — هر یوزر عادی روزانه ۳۵ پیام AI؛ بیشترش → پیام «سهمت تموم شد»
+- کلمات کلیدی هم اکنون شامل نت ضعیف/قطع، chatgpt/جمنای/deepseek و vpn/اکسپرس/کانفیگ می‌شود → ریپلای تبلیغ @diazpshopbot
+- تنظیمات رفتار همه در config.json (personality، react_chance، chatter، typing، تأخیر)
