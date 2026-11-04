@@ -11,7 +11,7 @@
 - name_replies.json — جواب‌های صدا زدن ({} = اسم بات)
 
 ## Env (Railway Variables)
-TELEGRAM_TOKEN / GEMINI_API_KEY / BOT_NAME=زارا / BOT_USERNAME=yournick
+TELEGRAM_TOKEN / GEMINI_API_KEY / BOT_NAME=زارا / BOT_USERNAME=Zara133bot
 GEMINI_MODEL=gemini-2.0-flash / CHATTER_EVERY=25 / SYSTEM_PROMPT (اختیاری)
 
 ## ست‌آپ BotFather
