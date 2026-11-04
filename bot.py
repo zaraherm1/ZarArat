@@ -1,48 +1,70 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-گروه‌بات شوخ‌طبع تلگرام (مثل گوریل) — به همهٔ پیام‌ها واکنش‌دار:
-  ۱) صدا زدن با اسم (مثلاً «زارا») → جواب آنی «جونم؟ 😄» — بدون LLM، تو کمتر از ثانیه
-  ۲) کلمات کلیدی (vpn/نتا/فیلترشکن/...) → ریپلای خودکار تبلیغ — بدون LLM
-  ۳) گپ عمومی: بات **اهمیتی** به پیام‌های عادی نشون می‌ده — ولی اسمش توی پیام باشه
-     یا ریپلای بشه یا / بزنن → جواب شوخِ Gemini
-  ۴) هر چند پیام یه نُکتِهٔ کوتاه خودمونی می‌ندازه وسط (حس زنده بودن)
-stdlib-only؛ polling. Railway: python:3.12-slim.
-
-Env:
-  TELEGRAM_TOKEN  (لازم)
-  GEMINI_API_KEY  (لازم)
-  BOT_NAME        اسمی که بچه‌ها صدا می‌زنن (پیش‌فرض: زارا)
-  BOT_USERNAME    یوزرنیم بات بدون @ — برای منشن (اختیاری ولی توصیه)
-  GEMINI_MODEL    پیش‌فرض gemini-2.0-flash
-  SYSTEM_PROMPT   شخصیت — پیش‌فرض شوخ‌طبع خودمونی
-  CHATTER_EVERY   هر چند پیام یه نکتہ بندازه (پیش‌فرض 25؛ 0 خاموش)
-  MAX_HISTORY     پیش‌فرض 10
-فایل keywords.json + name_replies.json قابل ویرایش در هر زمان بدون ری‌استارت.
+زارا — بات گروهی شوخ‌طبع تلگرام (موتور: River / هر OpenAI-compatible)
+همهٔ تنظیمات رفتاری از فایل config.json خوانده می‌شود (reload خودکار، بدون ری‌استارت):
+  {
+    "personality": "متن کامل شخصیت (system prompt)",
+    "name_replies": ["جونم {name}..."]،
+    "chatter_lines": ["..."]،
+    "chatter_every": 25,
+    "max_history": 10,
+    "reply_chance_in_group": 0.0,   # احتمال جواب دادن به پیام‌های عادی گروه (0 تا 1)
+    "react_chance": 0.15,           # احتمال ری‌اکشن ایموجی به پیام عادی
+    "react_emojis": ["🔥","😂","👍"],
+    "typing": true,                 # «در حال نوشتن...» نشون بده موقع جواب AI
+    "min_delay_ms": 600,            # تأخیر مصنوعی طبیعی قبل از جواب
+    "max_delay_ms": 1800
+  }
+Env (فقط اتصالات): TELEGRAM_TOKEN، LLM_API_KEY، LLM_BASE_URL، LLM_MODEL، BOT_NAME، BOT_USERNAME
 """
 import json, os, sys, time, random, threading, urllib.request, urllib.error
 
 BASE = "https://api.telegram.org/bot" + os.environ.get("TELEGRAM_TOKEN", "").strip()
-# LLM: OpenAI-compatible (River) — GLM-5.3 reasoning مدل؛ strip reasoning_content
 LLM_BASE = os.environ.get("LLM_BASE_URL", "https://api.river.ai/v1").rstrip("/")
-LLM_KEY = os.environ.get("LLM_API_KEY", os.environ.get("GEMINI_API_KEY", "")).strip()
+LLM_KEY = os.environ.get("LLM_API_KEY", "").strip()
 LLM_MODEL = os.environ.get("LLM_MODEL", "GLM-5.3").strip()
-GEMINI_KEY = LLM_KEY  # سازگاری نام قدیم
 BOT_NAME = os.environ.get("BOT_NAME", "زارا").strip()
 BOT_USERNAME = os.environ.get("BOT_USERNAME", "").strip().lstrip("@")
-SYSTEM_PROMPT = os.environ.get("SYSTEM_PROMPT", "").strip() or (
-    f"تو یه بات تلگرامی خودمونی و شوخ‌طبعی به اسم «{BOT_NAME}» که تو گروهی با چندتا رفیق. "
-    "سبک‌ات خیلی خودمونی و بانمکه، گاهی هم شوخی‌دار جواب می‌دی. خیلی کوتاه جواب بده "
-    "(۱ تا ۳ جمله، بیشتر نشه)، فارسی محاوره‌ی، بدون تعارف. "
-    "اگه کسی ناراحت بود با مهر آرومش کن، اگه سؤال تخصصی پرسید دقیق و درست جواب بده."
-)
-MAX_HISTORY = int(os.environ.get("MAX_HISTORY", "10"))
-CHATTER_EVERY = int(os.environ.get("CHATTER_EVERY", "25"))
-DIR = os.path.dirname(os.path.abspath(__file__))
-KW_FILE = os.path.join(DIR, "keywords.json")
-NR_FILE = os.path.join(DIR, "name_replies.json")
-
 LLM_URL = LLM_BASE + "/chat/completions"
+DIR = os.path.dirname(os.path.abspath(__file__))
+CFG_FILE = os.path.join(DIR, "config.json")
+KW_FILE = os.path.join(DIR, "keywords.json")
+
+DEFAULT_CFG = {
+    "personality": (
+        "تو «زارا» هستی، یه بات تلگرامی خودمونی و شوخ‌طبع که تو گروه با چندتا رفیق گپ می‌زنه. "
+        "قوانین رفتارت:\n"
+        "- خیلی کوتاه جواب بده: ۱ تا ۳ جمله، بیشتر نشه.\n"
+        "- فارسی محاورهٔ، صمیمی، بدون تعارف و بدون لحن رسمی.\n"
+        "- شوخی‌های سبک و بانمک داشته باش؛ خودت را جدی نگیر.\n"
+        "- اگه کسی ناراحت یا غمگین بود، با مهربونی آرومش کن.\n"
+        "- اگه سؤال تخصصی یا فنی پرسیدن، دقیق و درست جواب بده ولی بازم خودمونی.\n"
+        "- فحش، تهمت، بحث سیاسی و موضوعات +18 ممنوع — با شوخی رد کن.\n"
+        "- خودت رو بات معرفی کن، ادعای آدم بودن نکن.\n"
+        "- هرگز اسم واقعی کاربران یا اطلاعات شخصی‌شون رونسواست نکن."
+    ),
+    "name_replies": ["جونم {name}، بگو 🌹", "بله {name}؟ 😄", "در خدمتم {name} ✋",
+                     "خب داداش؟ 😎", "چشم {name}", "فدات {name}، بگو"],
+    "chatter_lines": [
+        "راستی بچه‌ها نظرتون چیه؟ 😄",
+        "من اینجام، یه خورده ساکت، خبرم کنید اگه کاری بود 😴",
+        "کی بگو بسازید چای؟ ☕ چایی کی می‌خوره؟",
+        "یکی چیزی بخوره بیارم؟ 🍕 (شوخی کردم، دسترسی ندارم)",
+        "امروز کلی حرف زدیم، خسته نباشید همگی 🌙",
+    ],
+    "chatter_every": 25,
+    "max_history": 10,
+    "reply_chance_in_group": 0.0,
+    "react_chance": 0.15,
+    "react_emojis": ["🔥", "😂", "👍", "❤"],
+    "typing": True,
+    "min_delay_ms": 600,
+    "max_delay_ms": 1800,
+}
+
+_cfg, _cfg_lock = {}, threading.Lock()
+_cfg_mtime = 0
 
 _hist, _hist_lock = {}, threading.Lock()
 _msg_counter = 0
@@ -51,6 +73,41 @@ _counter_lock = threading.Lock()
 
 def log(*a):
     print(time.strftime("[%H:%M:%S]"), *a, flush=True)
+
+
+def cfg():
+    global _cfg, _cfg_mtime
+    try:
+        mt = os.path.getmtime(CFG_FILE)
+    except OSError:
+        mt = 0
+    with _cfg_lock:
+        if mt != _cfg_mtime or not _cfg:
+            try:
+                with open(CFG_FILE, encoding="utf-8") as f:
+                    loaded = json.load(f)
+                if isinstance(loaded, dict):
+                    merged = dict(DEFAULT_CFG)
+                    merged.update(loaded)
+                    _cfg = merged
+                    _cfg_mtime = mt
+                    log("config.json لود شد")
+            except Exception as e:
+                log("config.json بد:", e)
+                _cfg = dict(DEFAULT_CFG)
+        return _cfg
+
+
+def load_json_list(path):
+    try:
+        with open(path, encoding="utf-8") as f:
+            d = json.load(f)
+        return d if isinstance(d, list) else []
+    except FileNotFoundError:
+        return []
+    except Exception as e:
+        log(os.path.basename(path), "بد:", e)
+        return []
 
 
 def tg(method, payload, timeout=45):
@@ -70,18 +127,6 @@ def tg(method, payload, timeout=45):
     return None
 
 
-def load_json_list(path):
-    try:
-        with open(path, encoding="utf-8") as f:
-            d = json.load(f)
-        return d if isinstance(d, list) else []
-    except FileNotFoundError:
-        return []
-    except Exception as e:
-        log(os.path.basename(path), "بد:", e)
-        return []
-
-
 def normalize(s):
     return " ".join(s.replace("ي", "ی").replace("ك", "ک").split())
 
@@ -98,13 +143,17 @@ def react(chat_id, mid, emoji):
                                   "reaction": [{"type": "emoji", "emoji": emoji}]})
 
 
-NAME_REPLIES_DEFAULT = ["جونم {}, بگو 🌹", "بله {}؟ 😄", "در خدمتم {} ✋",
-                        "خب داداش؟ 😎", "چشوم {}", "فدات {}، بگو"]
+def natural_pause():
+    c = cfg()
+    lo = max(0, int(c.get("min_delay_ms", 600)))
+    hi = max(lo, int(c.get("max_delay_ms", 1800)))
+    time.sleep(random.randint(lo, hi) / 1000.0)
 
 
 def name_call_reply(chat_id, mid):
-    rs = load_json_list(NR_FILE) or NAME_REPLIES_DEFAULT
-    reply(chat_id, mid, random.choice(rs).format(BOT_NAME))
+    c = cfg()
+    rs = c.get("name_replies") or ["جونم {name}، بگو 🌹"]
+    reply(chat_id, mid, random.choice(rs).format(name=BOT_NAME))
 
 
 def check_keywords(text, chat_id, mid):
@@ -134,14 +183,20 @@ def mentions_bot(text, msg):
     return False
 
 
-def gemini_reply(chat_id, text):
+def llm_reply(chat_id, text):
+    c = cfg()
     hist = _hist.setdefault(chat_id, [])
     with _hist_lock:
         hist.append({"role": "user", "content": text})
-        if len(hist) > MAX_HISTORY * 2:
-            del hist[:-MAX_HISTORY * 2]
-        body = {"model": LLM_MODEL, "messages": [{"role": "system", "content": SYSTEM_PROMPT}] + hist,
-                "max_tokens": 1500, "temperature": 1.0}
+        mh = int(c.get("max_history", 10)) * 2
+        if len(hist) > mh:
+            del hist[:-mh]
+        body = {"model": LLM_MODEL,
+                "messages": [{"role": "system", "content": c["personality"]}] + hist,
+                "max_tokens": 1200, "temperature": 1.0}
+    if c.get("typing", True):
+        tg("sendChatAction", {"chat_id": chat_id, "action": "typing"})
+    natural_pause()
     try:
         req = urllib.request.Request(LLM_URL, data=json.dumps(body).encode(),
                                      headers={"Content-Type": "application/json",
@@ -149,30 +204,37 @@ def gemini_reply(chat_id, text):
         with urllib.request.urlopen(req, timeout=120) as r:
             resp = json.loads(r.read().decode())
         msg = ((resp.get("choices") or [{}])[0]).get("message") or {}
-        out = (msg.get("content") or "").strip()  # reasoning_content عمداً نادیده
+        out = (msg.get("content") or "").strip()  # reasoning نادیده
         if not out:
             log("llm empty; finish:", resp.get("choices", [{}])[0].get("finish_reason"))
             return "حالا یه‌بار دیگه بگو 😅"
         with _hist_lock:
             hist.append({"role": "assistant", "content": out})
-            if len(hist) > MAX_HISTORY * 2:
-                del hist[:len(hist) - MAX_HISTORY * 2]
-        return out[:1500]
+            mh = int(cfg().get("max_history", 10)) * 2
+            if len(hist) > mh:
+                del hist[:len(hist) - mh]
+        return out[:1200]
     except Exception as e:
         log("llm ERR", e)
         return "مغزم یه لحظه قطع شد، دوباره بگو 🙈"
 
 
+# اسم قدیمی سازگار
+gemini_reply = llm_reply
+
+
 def chatter(chat_id):
-    """هر چند پیام یه نکتهٔ خودمونی — حس زنده بودن."""
-    lines = [
-        "راستی بچه‌ها نظرتون چیه؟ 😄",
-        "من اینجام، یه خورده ساکت، خبرم کنید اگه کاری بود 😴",
-        "هوا چطوره اون‌ورا؟ ☀️",
-        "یکی چیزی بخوره بیارم؟ 🍕 (شوخی کردم، دسترسی ندارم)",
-        "امروز کلی حرف زدیم، خسته نباشید همگی 🌙",
-    ]
+    c = cfg()
+    lines = c.get("chatter_lines") or ["چیزی نمی‌گم، فقط سلام 😄"]
     tg("sendMessage", {"chat_id": chat_id, "text": random.choice(lines)})
+
+
+def casual_react(chat_id, mid):
+    """ری‌اکشن احتمالی به پیام عادی گروه — حس حضور."""
+    c = cfg()
+    if random.random() < float(c.get("react_chance", 0.15)):
+        emojis = c.get("react_emojis") or ["👍"]
+        react(chat_id, mid, random.choice(emojis))
 
 
 def handle_update(u):
@@ -186,46 +248,55 @@ def handle_update(u):
     chat_id = msg["chat"]["id"]
     mid = msg["message_id"]
     chat_type = msg["chat"].get("type", "private")
+    c = cfg()
 
-    # ۱) اسم بات گوی‌شده؟ → جواب آنی (تا قبل از هر چیز دیگه)
+    # ۱) اسم بات → جواب آنی اسم + اگر حرفی بود جواب AI
     t0 = normalize(text)
     called = (BOT_NAME and BOT_NAME in t0) or (BOT_USERNAME and ("@" + BOT_USERNAME) in t0)
     if called and not text.startswith("/"):
         name_call_reply(chat_id, mid)
-        # اگه بعد از اسم حرفی بود، اون حرف رو هم به AI بده (تجربهٔ گپ)
-        rest = t0.replace(BOT_NAME, "", 1).replace("@" + BOT_USERNAME, "", 1).strip(" ،.,!؟?") if BOT_USERNAME else t0.replace(BOT_NAME, "", 1).strip(" ،.,!؟?")
+        rest = t0
+        if BOT_NAME:
+            rest = rest.replace(BOT_NAME, "", 1)
+        if BOT_USERNAME:
+            rest = rest.replace("@" + BOT_USERNAME, "", 1)
+        rest = rest.strip(" ،.,!؟?")
         if len(rest) > 3 and LLM_KEY:
-            out = gemini_reply(chat_id, rest)
+            out = llm_reply(chat_id, rest)
             if out:
                 reply(chat_id, mid, out)
         return
 
     if chat_type == "private":
-        react(None, mid, "") if False else None
         if not check_keywords(text, chat_id, mid) and LLM_KEY:
-            reply(chat_id, mid, gemini_reply(chat_id, text))
+            reply(chat_id, mid, llm_reply(chat_id, text))
         return
 
     # گروه:
-    # ۲) تبلیغ روی کلمات کلیدی (vpn، نتا و ...)
+    # ۲) تبلیغ کلمات کلیدی
     if check_keywords(text, chat_id, mid):
         return
 
-    # ۳) گپ خطاب‌شده → AI
+    # ۳) خطاب مستقیم → AI
     if mentions_bot(text, msg) and LLM_KEY:
         clean = text
         if BOT_USERNAME:
             clean = clean.replace("@" + BOT_USERNAME, "").strip()
         if clean.startswith("/"):
             clean = clean.split(" ", 1)[-1] if " " in clean else "چی رو بگم؟"
-        reply(chat_id, mid, gemini_reply(chat_id, normalize(clean)))
+        reply(chat_id, mid, llm_reply(chat_id, normalize(clean)))
         return
 
-    # ۴) نُکتِهٔ دوره‌ای — حس زندگی
+    # ۴) رفتار عادی: ری‌اکشن احتمالی + شانس جواب عادی + نکتهٔ دوره‌ای
+    casual_react(chat_id, mid)
+    chance = float(c.get("reply_chance_in_group", 0.0))
+    if chance > 0 and LLM_KEY and random.random() < chance:
+        reply(chat_id, mid, llm_reply(chat_id, normalize(text)))
+        return
     with _counter_lock:
         _msg_counter += 1
         n = _msg_counter
-    if CHATTER_EVERY and n % CHATTER_EVERY == 0:
+    if int(c.get("chatter_every", 25)) and n % int(c.get("chatter_every", 25)) == 0:
         chatter(chat_id)
 
 
@@ -234,9 +305,9 @@ def main():
         log("FATAL: TELEGRAM_TOKEN ست نیست"); sys.exit(1)
     me = tg("getMe", {}, timeout=20)
     tu = (((me or {}).get("result") or {}).get("username")) or ""
-    if tu and not BOT_USERNAME:
-        globals()["BOT_USERNAME"] = tu  # منشن با یوزرنیم واقعی خود بات
-    log("بات آنلاین:", "@" + tu, "| اسم صوتی:", BOT_NAME)
+    globals()["BOT_USERNAME"] = BOT_USERNAME or tu
+    cfg()  # لود اولیه
+    log("بات آنلاین: @" + tu, "| اسم:", BOT_NAME, "| مدل:", LLM_MODEL)
     offset = 0
     while True:
         d = tg("getUpdates", {"offset": offset + 1, "timeout": 50,
