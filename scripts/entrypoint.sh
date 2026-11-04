@@ -57,7 +57,7 @@ EOF
 fi
 
 # --- seed managed config + SOUL (zara-setup) ---
-ZARA_VERSION="${ZARA_VERSION:-1.8}"
+ZARA_VERSION="${ZARA_VERSION:-1.9}"
 STATE_FILE="${HERMES_HOME}/.zara-setup-version"
 seed_managed() {
   local src="$1" dst="$2"
