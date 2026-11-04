@@ -80,7 +80,7 @@ def _match_group(text: str):
 
 
 def on_pre_gateway_dispatch(event, gateway=None, session_store=None, **_kw):
-    """Return {"action": "rewrite", "text": ...} to nudge, else None."""
+    """Tag every group message with its true sender, and nudge ads on keywords."""
     try:
         return _handle(event)
     except Exception:
@@ -94,13 +94,25 @@ def _handle(event):
     chat = getattr(src, "chat_id", "") if src else ""
     uid = str(getattr(src, "user_id", "") or "")
     chat_type = getattr(src, "chat_type", "dm") if src else "dm"
+    uname = (getattr(src, "user_name", "") or "").strip()
 
     text = getattr(event, "text", "") or ""
-    if not text.strip() or uid in ADMIN_IDS:
+    if not text.strip():
         return None
+
+    # ---- identity attribution (groups): prepend trusted sender line ----
+    if chat_type == "group" and uid:
+        who = f"{uname} | id: {uid}" if uname else f"id: {uid}"
+         # defensive: skip if a tag is somehow already present (defensive)
+        if "[فرستنده:" not in text:
+            text = f"[فرستنده: {who}]\n{text}"
+
+    # ---- keyword ad nudge (never for admin) ----
+    if uid in ADMIN_IDS:
+        return {"action": "rewrite", "text": text} if "[فرستنده:" in text else None
     group = _match_group(text)
     if group is None:
-        return None
+        return {"action": "rewrite", "text": text} if "[فرستنده:" in text else None
     now = time.time()
     if now - _last_nudge.get(chat, 0.0) < COOLDOWN:
         return None
