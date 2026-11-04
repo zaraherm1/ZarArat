@@ -1,0 +1,27 @@
+# managed-by: zara-setup v1.0
+model:
+  provider: openai-api
+  default: deepseek-ai/DeepSeek-V4.1-Flash
+  persist_switch_by_default: true
+
+platforms:
+  telegram:
+    extra:
+      allow_admin_from:
+        - "{{OWNER_ID}}"
+      user_allowed_commands: []
+      command_menu:
+        max_commands: 1
+      # گروه‌ها بازن — زارا قراره تو گروه با بچه‌ها گپ بزنه
+      group_policy: enabled
+      # توی گروه فقط وقتی جواب بده که منشن/ریپلای شده یا اسمش اومده
+      require_mention_in_groups: true
+
+tool_loop_guardrails:
+  warnings_enabled: true
+  non_interactive_hard_stop_enabled: false
+
+display:
+  show_reasoning: false
+  interim_assistant_messages: true
+  busy_ack_detail: false
