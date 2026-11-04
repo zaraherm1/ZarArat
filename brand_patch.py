@@ -48,6 +48,10 @@ HELP_NEW = r'''    async def _handle_help_command(self, event: MessageEvent) -> 
 
 
 TARGETED = (
+    ("gateway/run_turn.py",
+     "            note = first_contact_turn_note(",
+     "            note = None  # ZARA-NO-ONBOARDING: never inject /help or profile-offer notes\n            if False:\n                note = first_contact_turn_note(", True),
+
     ("gateway/slash_commands.py",
      '    async def _handle_help_command(self, event: MessageEvent) -> str:\n'
      '        """Handle /help command - list available commands."""\n'
